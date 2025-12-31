@@ -1,4 +1,3 @@
-# scrape_contact.py
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -6,73 +5,139 @@ from selenium.webdriver.support import expected_conditions as EC
 import time
 from pdf_generator import PDFGenerator
 
-def scrape_contact():
-    print("\n=== Sunbeam Contact Us – PDF Generation ===\n")
 
-    # ---------- PDF ----------
-    pdf = PDFGenerator("Sunbeam_Contact_Centres.pdf")
-    pdf.add_heading("Sunbeam Contact Centres")
+def scrape_modular_courses():
+    print("\n=== Sunbeam Modular Courses – PDF Generation ===\n")
+
+    # ---------------- PDF ----------------
+    pdf = PDFGenerator("Sunbeam_Modular_Courses.pdf")
+    pdf.add_heading("Sunbeam Modular Courses Detailed Information")
     pdf.add_separator()
 
-    # ---------- Selenium ----------
+    # ---------------- Selenium ----------------
     driver = webdriver.Chrome()
     wait = WebDriverWait(driver, 15)
-    driver.get("https://sunbeaminfo.in/contact-us")
-    time.sleep(3)
 
-    # ---------- Locate centre blocks ----------
-    centres = driver.find_elements(By.XPATH, "//div[contains(@class,'col')]")
+    try:
+        driver.get("https://sunbeaminfo.in/modular-courses-home")
+        time.sleep(2)
 
-    centre_count = 0
+        # ---------- Collect all modular course links ----------
+        links = set()
+        anchors = driver.find_elements(
+            By.XPATH,
+            "//a[contains(@href,'modular-courses') and not(contains(@href,'home'))]"
+        )
 
-    for block in centres:
-        text = block.text.strip()
-        if "SunBeam" not in text:
-            continue
+        for a in anchors:
+            href = a.get_attribute("href")
+            if href:
+                links.add(href)
 
-        centre_count += 1
-        pdf.add_heading(f"Centre {centre_count}")
+        links = sorted(list(links))
 
-        # Centre Name
-        try:
-            name = block.find_element(By.TAG_NAME, "h4").text.strip()
-            pdf.add_line(f"Centre Name : {name}")
-        except:
-            pass
+        # ---------- Helper functions ----------
+        def safe_text(text):
+            replacements = {
+                "—": "-",
+                "•": "-",
+                "…": "...",
+                "’": "'",
+                "“": '"',
+                "”": '"'
+            }
+            for k, v in replacements.items():
+                text = text.replace(k, v)
+            return text
 
-        # Address
-        try:
-            addr = block.find_element(By.XPATH, ".//p").text.strip()
-            pdf.add_line(f"Address     : {addr}")
-        except:
-            pass
+        def collect_following_until_heading(base_el):
+            texts = []
+            siblings = base_el.find_elements(By.XPATH, "following-sibling::*")
+            for s in siblings:
+                if s.tag_name.lower() in ("h1", "h2", "h3", "h4"):
+                    break
+                t = s.text.strip()
+                if t:
+                    texts.append(t)
+            return texts
 
-        # Phone
-        try:
-            phone = block.find_element(By.XPATH, ".//a[contains(@href,'tel')]").text.strip()
-            pdf.add_line(f"Phone       : {phone}")
-        except:
-            pass
+        # ---------- Scrape each course ----------
+        for link in links:
+            driver.get(link)
+            time.sleep(2)
+            wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
 
-        # Email
-        try:
-            email = block.find_element(By.XPATH, ".//a[contains(@href,'mailto')]").text.strip()
-            pdf.add_line(f"Email       : {email}")
-        except:
-            pass
+            # Course Name
+            course_name = ""
+            for tag in ("//h1", "//h2", "//h3"):
+                try:
+                    t = driver.find_element(By.XPATH, tag).text.strip()
+                    if t:
+                        course_name = t
+                        break
+                except:
+                    continue
 
-        # Google Map
-        try:
-            iframe = block.find_element(By.XPATH, ".//iframe")
-            map_url = iframe.get_attribute("src")
-            pdf.add_line(f"Map URL     : {map_url}")
-        except:
-            pass
+            pdf.add_heading(f"Course Name: {safe_text(course_name)}")
 
-        pdf.add_separator()
+            # General info
+            keys = [
+                "Batch Schedule",
+                "Schedule",
+                "Duration",
+                "Timings",
+                "Fees",
+                "Target Audience"
+            ]
 
-    driver.quit()
-    pdf.save()
+            for k in keys:
+                try:
+                    el = driver.find_element(
+                        By.XPATH,
+                        f"//*[contains(normalize-space(.),'{k}')]"
+                    )
+                    text = el.text.strip()
+                    if text:
+                        pdf.add_line(safe_text(text))
+                except:
+                    continue
 
-    print(f"PDF created successfully with {centre_count} centres")
-    print("File saved as: Sunbeam_Contact_Centres.pdf")
+            pdf.add_separator()
+
+            # Sections
+            section_headings = [
+                "Syllabus",
+                "Pre-requisites",
+                "Software Setup",
+                "Student Feedback",
+                "Recorded Videos",
+                "Batch schedule"
+            ]
+
+            for heading in section_headings:
+                try:
+                    els = driver.find_elements(
+                        By.XPATH,
+                        f"//h2[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), '{heading.lower()}')] | "
+                        f"//h3[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), '{heading.lower()}')] | "
+                        f"//h4[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), '{heading.lower()}')]"
+                    )
+
+                    for el in els:
+                        pdf.add_heading(safe_text(el.text.strip()))
+                        blocks = collect_following_until_heading(el)
+                        for b in blocks:
+                            pdf.add_line(safe_text(b))
+                except:
+                    continue
+
+            pdf.add_separator()
+
+        pdf.save()
+        print("✅ Courses PDF created: Sunbeam_Modular_Courses.pdf")
+
+    except Exception as e:
+        print("❌ Courses scraping failed:", e)
+
+    finally:
+        driver.quit()
