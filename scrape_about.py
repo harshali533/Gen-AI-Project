@@ -13,7 +13,7 @@ def scrape_about():
     # Use full raw path and add timestamp to avoid overwrite/permission issues
     import time
     timestamp = int(time.time())
-    filename = rf"D:\Day-1(CDAC)\git d-1\GenAI-94611\chatboat-project\Sunbeam_About_Us_{timestamp}.pdf"
+    filename = f"Sunbeam_About_Us{timestamp}.pdf"
     pdf = PDFGenerator(filename)
     pdf.add_heading("About Sunbeam Infotech")
     pdf.add_separator()
